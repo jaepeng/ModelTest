@@ -14,6 +14,7 @@ import java.io.OutputStream;
 
 public class GoActivity extends AppCompatActivity {
 
+    private static final String SYSTEM_PROMPT = "你是一个中文AI助手，必须用中文回答所有问题，不要使用英文。";
     private LlamaNative llama;
     private long ctxPtr = 0L;
 
