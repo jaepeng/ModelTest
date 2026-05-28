@@ -1,0 +1,5 @@
+-keep class com.example.modeltest.MainActivity { *; }
+-keep class com.example.modeltest.LlamaNative { *; }
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
