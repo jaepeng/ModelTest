@@ -1,1 +1,31 @@
-/build
+# OSX  
+
+*.DS_Store  
+
+
+# Gradle files  
+build/  
+.gradle/  
+*/build/  
+*/.externalNativeBuild/
+
+# IDEA  
+*.iml
+*.apk
+.idea/
+
+/.gradle/
+/app/release/output.json
+/SerialPortLibrary/.cxx/
+/local.properties
+/app/debug/output.json
+/app/release/
+/app/debug/
+**/output-metadata.json
+/app/iot/
+/app/xincanyin/
+/app/shouqianba/
+/app/shouqianba2/
+/app/lingshou/
+/app/suixingfu/
+/apk/
