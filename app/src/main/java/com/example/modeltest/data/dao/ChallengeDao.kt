@@ -39,7 +39,7 @@ interface ChallengeDao {
 
     // Stats: category breakdown for date range
     @Query("""
-        SELECT cat.name as categoryName, cat.emoji as emoji, COUNT(comp.id) as count
+        SELECT cat.displayName as categoryName, cat.emoji as emoji, COUNT(comp.id) as count
         FROM challenges c
         INNER JOIN categories cat ON c.categoryId = cat.id
         LEFT JOIN challenge_completions comp ON c.id = comp.challengeId
