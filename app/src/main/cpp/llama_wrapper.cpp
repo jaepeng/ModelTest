@@ -9,6 +9,8 @@
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
+static JavaVM* g_jvm = nullptr;
+
 struct MyContext {
     llama_model* model;
     llama_context* ctx;
@@ -21,7 +23,26 @@ static void llama_log_callback_android(enum ggml_log_level level, const char * t
     __android_log_print(ANDROID_LOG_INFO, "LLAMA_CPP", "%s", text);
 }
 
+// Helper: get JNIEnv for the current thread (attaches if needed)
+static JNIEnv* getJNIEnv() {
+    JNIEnv* env = nullptr;
+    if (g_jvm) {
+        int status = g_jvm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
+        if (status == JNI_EDETACHED) {
+            g_jvm->AttachCurrentThread(&env, nullptr);
+        }
+    }
+    return env;
+}
+
 extern "C" {
+
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
+    (void)reserved;
+    g_jvm = vm;
+    LOGD("JNI_OnLoad: JavaVM stored");
+    return JNI_VERSION_1_6;
+}
 
 JNIEXPORT jboolean JNICALL
 Java_com_example_modeltest_LlamaNative_initBackend(JNIEnv* env, jobject thiz) {
@@ -240,6 +261,156 @@ Java_com_example_modeltest_LlamaNative_freeContext(
         delete myCtx;
         LOGD("context freed");
     }
+}
+
+// Streaming generation: calls back to Java for each token
+JNIEXPORT jstring JNICALL
+Java_com_example_modeltest_LlamaNative_generateStreaming(
+        JNIEnv* env,
+        jobject thiz,
+        jlong myCtxPtr,
+        jstring prompt,
+        jint maxTokens,
+        jobject callback) {
+    (void)thiz;
+
+    MyContext* myCtx = reinterpret_cast<MyContext*>(myCtxPtr);
+    if (!myCtx || !myCtx->ctx || !myCtx->vocab) {
+        LOGE("generateStreaming: context or vocab is null");
+        return env->NewStringUTF("");
+    }
+
+    // Clear KV cache from previous generate() call
+    llama_memory_clear(llama_get_memory(myCtx->ctx), true);
+
+    llama_context* ctx = myCtx->ctx;
+    const llama_vocab* vocab = myCtx->vocab;
+
+    const char* promptStr = env->GetStringUTFChars(prompt, nullptr);
+    if (!promptStr) {
+        LOGE("generateStreaming: prompt is null");
+        return env->NewStringUTF("");
+    }
+    LOGD("Streaming generate - Prompt length: %zu", strlen(promptStr));
+
+    std::string result;
+    llama_batch batch = llama_batch_init(512, 0, 1);
+
+    int n_prompt = llama_tokenize(
+            vocab,
+            promptStr,
+            (int32_t)strlen(promptStr),
+            batch.token,
+            512,
+            true,
+            true
+    );
+
+    if (n_prompt < 0) {
+        LOGE("generateStreaming: tokenize failed with code %d", n_prompt);
+        llama_batch_free(batch);
+        env->ReleaseStringUTFChars(prompt, promptStr);
+        return env->NewStringUTF("");
+    }
+    LOGD("Streaming generate - Tokenized prompt: %d tokens", n_prompt);
+
+    batch.n_tokens = n_prompt;
+    for (int i = 0; i < n_prompt; i++) {
+        batch.pos[i] = i;
+        batch.n_seq_id[i] = 1;
+        batch.seq_id[i][0] = 0;
+        batch.logits[i] = (i == n_prompt - 1);
+    }
+
+    int decode_res = llama_decode(ctx, batch);
+    if (decode_res != 0) {
+        LOGE("generateStreaming: decode failed with code %d", decode_res);
+        llama_batch_free(batch);
+        env->ReleaseStringUTFChars(prompt, promptStr);
+        return env->NewStringUTF("");
+    }
+    LOGD("Streaming generate - Decoded prompt successfully");
+
+    // Build sampler chain
+    auto sparams = llama_sampler_chain_default_params();
+    llama_sampler* smpl = llama_sampler_chain_init(sparams);
+    llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
+    llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.9f, 1));
+    llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.8f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(64, 1.1f, 0.8f, 1.0f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_dist(12345));
+
+    // Get callback method IDs (thread-safe lookup)
+    JNIEnv* cbEnv = getJNIEnv();
+    if (!cbEnv || !callback) {
+        LOGE("generateStreaming: failed to get JNIEnv or callback is null");
+        llama_sampler_free(smpl);
+        llama_batch_free(batch);
+        env->ReleaseStringUTFChars(prompt, promptStr);
+        return env->NewStringUTF("");
+    }
+    jclass cbClass = cbEnv->GetObjectClass(callback);
+    jmethodID onTokenMethod = cbEnv->GetMethodID(cbClass, "onToken", "(Ljava/lang/String;)V");
+    jmethodID onCompleteMethod = cbEnv->GetMethodID(cbClass, "onComplete", "(Ljava/lang/String;)V");
+
+    if (!onTokenMethod || !onCompleteMethod) {
+        LOGE("generateStreaming: failed to get callback method IDs");
+        llama_sampler_free(smpl);
+        llama_batch_free(batch);
+        env->ReleaseStringUTFChars(prompt, promptStr);
+        return env->NewStringUTF("");
+    }
+
+    int cur = n_prompt;
+    while (cur < n_prompt + maxTokens) {
+        int token = llama_sampler_sample(smpl, ctx, -1);
+
+        if (token == llama_vocab_eos(vocab)) {
+            LOGD("Streaming generate - EOS at step %d", cur);
+            break;
+        }
+
+        char buf[256];
+        int n = llama_token_to_piece(vocab, token, buf, sizeof(buf), 0, false);
+
+        if (n > 0) {
+            result.append(buf, n);
+            // Call back to Java with the token text
+            jstring tokenStr = cbEnv->NewStringUTF(std::string(buf, n).c_str());
+            cbEnv->CallVoidMethod(callback, onTokenMethod, tokenStr);
+            cbEnv->DeleteLocalRef(tokenStr);
+        }
+
+        if (cur == n_prompt) {
+            LOGD("Streaming generate - First generated token id: %d", token);
+        }
+
+        batch.n_tokens = 1;
+        batch.token[0] = token;
+        batch.pos[0] = cur;
+        batch.n_seq_id[0] = 1;
+        batch.seq_id[0][0] = 0;
+        batch.logits[0] = true;
+
+        if (llama_decode(ctx, batch) != 0) {
+            LOGE("Streaming generate - decode failed at step %d", cur);
+            break;
+        }
+        cur++;
+    }
+
+    // Notify completion with full result
+    jstring fullResult = cbEnv->NewStringUTF(result.c_str());
+    cbEnv->CallVoidMethod(callback, onCompleteMethod, fullResult);
+    cbEnv->DeleteLocalRef(fullResult);
+    cbEnv->DeleteLocalRef(cbClass);
+
+    llama_sampler_free(smpl);
+    llama_batch_free(batch);
+    env->ReleaseStringUTFChars(prompt, promptStr);
+
+    LOGD("Streaming generate - Done, total length=%zu", result.size());
+    return env->NewStringUTF(result.c_str());
 }
 
 }

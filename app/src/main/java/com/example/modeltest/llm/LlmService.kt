@@ -4,6 +4,9 @@ import android.content.Context
 import android.util.Log
 import com.example.modeltest.LlamaNative
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -24,7 +27,7 @@ class LlmService(private val context: Context) {
         private const val MODEL_FILENAME = "MiniCPM-V-4_6-Q4_0.gguf"
         private const val ASSET_PATH = "models/$MODEL_FILENAME"
         private const val N_CTX = 2048
-        private const val MAX_TOKENS = 1024
+        private const val MAX_TOKENS = 2048
     }
 
     /**
@@ -65,6 +68,38 @@ class LlmService(private val context: Context) {
             Log.w(TAG, "Generate returned empty string")
         }
         result
+    }
+
+    /**
+     * Generate text from a prompt with streaming tokens via Flow.
+     * Each emitted String is a single token from the model.
+     * The flow completes when generation is finished.
+     */
+    fun generateStreaming(prompt: String): Flow<String> = callbackFlow {
+        if (!initialized || ctxPtr == 0L) {
+            Log.e(TAG, "LLM not initialized: initialized=$initialized, ctxPtr=$ctxPtr")
+            close()
+            return@callbackFlow
+        }
+        Log.d(TAG, "Streaming generation with prompt length=${prompt.length}")
+
+        val callback = object : TokenCallback {
+            override fun onToken(token: String) {
+                trySend(token)
+            }
+            override fun onComplete(fullResult: String) {
+                Log.d(TAG, "Streaming complete, total length=${fullResult.length}")
+                close()
+            }
+        }
+
+        withContext(Dispatchers.IO) {
+            llama.generateStreaming(ctxPtr, prompt, MAX_TOKENS, callback)
+        }
+
+        awaitClose {
+            Log.d(TAG, "Streaming flow closed")
+        }
     }
 
     /**

@@ -27,7 +27,8 @@ data class HomeUiState(
     val isLoading: Boolean = false,
     val isGenerating: Boolean = false,
     val challenges: List<ChallengeWithCategoryAndCompletion> = emptyList(),
-    val allCompleted: Boolean = false
+    val allCompleted: Boolean = false,
+    val thinkingText: String = ""
 )
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
@@ -45,6 +46,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _isLoading = MutableStateFlow(false)
     private val _isGenerating = MutableStateFlow(false)
     private val _celebrationTrigger = MutableStateFlow(false)
+    private val _thinkingText = MutableStateFlow("")
     val celebrationTrigger: StateFlow<Boolean> = _celebrationTrigger.asStateFlow()
 
     private val today = DateUtils.todayString()
@@ -54,13 +56,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val uiState: StateFlow<HomeUiState> = combine(
-        _isLoading, _isGenerating, challenges
-    ) { isLoading, isGenerating, challengesList ->
+        _isLoading, _isGenerating, challenges, _thinkingText
+    ) { isLoading, isGenerating, challengesList, thinkingText ->
         HomeUiState(
             isLoading = isLoading,
             isGenerating = isGenerating,
             challenges = challengesList,
-            allCompleted = challengesList.isNotEmpty() && challengesList.all { it.completionId != null }
+            allCompleted = challengesList.isNotEmpty() && challengesList.all { it.completionId != null },
+            thinkingText = thinkingText
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeUiState())
 
@@ -99,6 +102,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         Log.d(TAG, "generateChallenges() called")
         viewModelScope.launch {
             _isGenerating.value = true
+            _thinkingText.value = ""
             try {
                 Log.d(TAG, "Step 1: Initializing LLM...")
                 llmService.initialize()
@@ -108,22 +112,29 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 val dailyCount = userSettingRepo.getDailyChallengeCount().first()
                 Log.d(TAG, "Step 2: categories=$defaultCategories, dailyCount=$dailyCount")
 
-                val categoriesPerChallenge = maxOf(1, dailyCount / defaultCategories.size)
-                val prompt = buildPrompt(defaultCategories, categoriesPerChallenge)
-                Log.d(TAG, "Step 3: Prompt:\n$prompt")
+                val baseCount = dailyCount / defaultCategories.size
+                val remainder = dailyCount % defaultCategories.size
+                val prompt = buildPromptWithRemainder(defaultCategories, baseCount, remainder)
+                Log.d(TAG, "Step 3: Prompt length=${prompt.length}")
 
-                Log.d(TAG, "Step 4: Calling LLM generate...")
-                val llmOutput = llmService.generate(prompt)
-                Log.d(TAG, "Step 4: LLM raw output:\n$llmOutput")
+                // Step 4: Stream generate with real-time token display
+                Log.d(TAG, "Step 4: Calling LLM streaming generate...")
+                val fullOutput = StringBuilder()
+                llmService.generateStreaming(prompt).collect { token ->
+                    fullOutput.append(token)
+                    _thinkingText.value = fullOutput.toString()
+                    Log.d(TAG, "Token: $token")
+                }
+                val llmOutput = fullOutput.toString()
+                Log.d(TAG, "Step 4: LLM output complete, length=${llmOutput.length}")
 
+                // Step 5: Parse and insert challenges
                 Log.d(TAG, "Step 5: Parsing output...")
                 val parsed = ChallengeParser.parse(llmOutput)
                 Log.d(TAG, "Step 5: parsed=$parsed")
 
                 if (parsed.isNotEmpty()) {
-                    // Dynamically fetch category IDs from the database instead of hardcoding
                     val allCategories = categoryDao.getCategoriesByNames(parsed.keys.toList())
-                    // Build lookup by both name and displayName so Chinese/English keys both work
                     val categoryMap = allCategories.flatMap { cat ->
                         listOf(cat.name to cat.id, cat.displayName to cat.id)
                     }.toMap()
@@ -144,10 +155,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
 
-                    // Archive completed & delete incomplete before inserting new challenges
                     Log.d(TAG, "Step 6: Archiving completed & cleaning up old challenges...")
                     challengeRepo.archiveAndCleanupToday()
-
                     challengeRepo.insertChallenges(challenges)
                     Log.d(TAG, "Step 7: Inserted ${challenges.size} challenges to DB")
                 } else {
@@ -157,6 +166,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 Log.e(TAG, "generateChallenges FAILED", e)
             } finally {
                 _isGenerating.value = false
+                _thinkingText.value = ""
             }
         }
     }
@@ -164,16 +174,20 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         return "<|im_start|>user\n${userQuery}<|im_end|>\n<|im_start|>assistant\n"
     }
 
-    private fun buildPrompt(categories: List<String>, countPerCategory: Int): String {
-        val categoryEntries = categories.joinToString(",") { "\"$it\"" }
+    private fun buildPromptWithRemainder(categories: List<String>, baseCount: Int, remainder: Int): String {
+        val detail = categories.mapIndexed { index, cat ->
+            val count = if (index < remainder) baseCount + 1 else baseCount
+            "$cat: $count 个"
+        }.joinToString(", ")
         return buildTextPrompt("你是每日挑战生成助手。\n" +
-                "请为每个分类各生成${countPerCategory}个微小的、积极向上的日常挑战。\n" +
+                "分类及任务数量如下：$detail\n" +
                 "规则：\n" +
                 "- 每个挑战5分钟内可完成\n" +
+                "- 必须是单次可直接执行的动作，拒绝理念、口号、概括性语句\n" +
+                "- 禁止：坚持XX、养成XX、保持XX 这类空泛描述\n" +
                 "- 内容具体可执行，积极向上\n" +
                 "- 每条15字以内，必须是中文\n" +
-                "\n" +
-                "分类（使用以下英文key作为JSON的key）：$categoryEntries\n" +
+                "- 不允许生成空白挑战\n" +
                 "\n" +
                 "严格输出JSON格式，key必须是英文：格式为：{\"类别1\":[\"任务1\",\"任务2\"],\"类别2\":[\"任务1\",\"任务2\"]},示例如下：\n" +
                 "{\"health\":[\"喝一杯温水\",\"起来站5分钟\"],\"learning\":[\"看5分钟书\",\"学一个新单词\"]}")

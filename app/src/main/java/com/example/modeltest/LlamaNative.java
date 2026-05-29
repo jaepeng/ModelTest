@@ -29,5 +29,6 @@ public class LlamaNative {
     public native boolean initBackend();
     public native long loadModel(String modelPath, int nCtx);
     public native String generate(long ctxPtr, String prompt, int maxTokens);
+    public native String generateStreaming(long ctxPtr, String prompt, int maxTokens, com.example.modeltest.llm.TokenCallback callback);
     public native void freeContext(long ctxPtr);
 }
