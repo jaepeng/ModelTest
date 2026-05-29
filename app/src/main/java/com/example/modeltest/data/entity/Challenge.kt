@@ -23,5 +23,6 @@ data class Challenge(
     val categoryId: Long,
     val text: String,
     val date: String,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val archived: Boolean = false
 )

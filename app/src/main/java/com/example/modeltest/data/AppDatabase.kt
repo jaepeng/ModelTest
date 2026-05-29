@@ -5,6 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.modeltest.data.dao.CategoryDao
 import com.example.modeltest.data.dao.ChallengeDao
 import com.example.modeltest.data.dao.UserSettingDao
 import com.example.modeltest.data.dao.WeeklyPlanDao
@@ -16,10 +17,11 @@ import com.example.modeltest.data.entity.WeeklyPlan
 
 @Database(
     entities = [Category::class, Challenge::class, ChallengeCompletion::class, WeeklyPlan::class, UserSetting::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun categoryDao(): CategoryDao
     abstract fun challengeDao(): ChallengeDao
     abstract fun weeklyPlanDao(): WeeklyPlanDao
     abstract fun userSettingDao(): UserSettingDao

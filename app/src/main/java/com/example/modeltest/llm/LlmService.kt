@@ -21,10 +21,10 @@ class LlmService(private val context: Context) {
 
     companion object {
         private const val TAG = "LlmService"
-        private const val MODEL_FILENAME = "qwen2.5-coder-0.5b-instruct-q4_k_m.gguf"
+        private const val MODEL_FILENAME = "MiniCPM-V-4_6-Q4_0.gguf"
         private const val ASSET_PATH = "models/$MODEL_FILENAME"
-        private const val N_CTX = 1024
-        private const val MAX_TOKENS = 512
+        private const val N_CTX = 2048
+        private const val MAX_TOKENS = 1024
     }
 
     /**
@@ -53,10 +53,18 @@ class LlmService(private val context: Context) {
      */
     suspend fun generate(prompt: String): String = withContext(Dispatchers.IO) {
         if (!initialized || ctxPtr == 0L) {
-            Log.e(TAG, "LLM not initialized")
+            Log.e(TAG, "LLM not initialized: initialized=$initialized, ctxPtr=$ctxPtr")
             return@withContext ""
         }
-        llama.generate(ctxPtr, prompt, MAX_TOKENS)
+        Log.d(TAG, "Generating with prompt length=${prompt.length}")
+        val result = llama.generate(ctxPtr, prompt, MAX_TOKENS)
+        Log.d(TAG, "Generate result length=${result.length}")
+        if (result.isNotEmpty()) {
+            Log.d(TAG, "Generate output: $result")
+        } else {
+            Log.w(TAG, "Generate returned empty string")
+        }
+        result
     }
 
     /**

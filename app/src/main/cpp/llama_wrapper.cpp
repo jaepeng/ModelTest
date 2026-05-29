@@ -104,7 +104,10 @@ Java_com_example_modeltest_LlamaNative_generate(
 
     MyContext* myCtx = reinterpret_cast<MyContext*>(myCtxPtr);
     if (!myCtx || !myCtx->ctx || !myCtx->vocab) {
-        LOGE("context or vocab is null");
+        LOGE("context or vocab is null (ptr=%p)", myCtx);
+        if (myCtx) {
+             LOGE("ctx=%p, vocab=%p", myCtx->ctx, myCtx->vocab);
+        }
         return env->NewStringUTF("");
     }
 
@@ -119,6 +122,7 @@ Java_com_example_modeltest_LlamaNative_generate(
         LOGE("prompt is null");
         return env->NewStringUTF("");
     }
+    LOGD("Prompt: %s", promptStr);
 
     std::string result;
     llama_batch batch = llama_batch_init(512, 0, 1);
@@ -135,11 +139,12 @@ Java_com_example_modeltest_LlamaNative_generate(
     );
 
     if (n_prompt < 0) {
-        LOGE("tokenize failed");
+        LOGE("tokenize failed with code %d", n_prompt);
         llama_batch_free(batch);
         env->ReleaseStringUTFChars(prompt, promptStr);
         return env->NewStringUTF("");
     }
+    LOGD("Tokenized prompt: %d tokens", n_prompt);
 
     batch.n_tokens = n_prompt;
     for (int i = 0; i < n_prompt; i++) {
@@ -149,20 +154,36 @@ Java_com_example_modeltest_LlamaNative_generate(
         batch.logits[i] = (i == n_prompt - 1);
     }
 
-    if (llama_decode(ctx, batch) != 0) {
-        LOGE("decode failed");
+    int decode_res = llama_decode(ctx, batch);
+    if (decode_res != 0) {
+        LOGE("decode failed with code %d", decode_res);
         llama_batch_free(batch);
         env->ReleaseStringUTFChars(prompt, promptStr);
         return env->NewStringUTF("");
     }
+    LOGD("Decoded prompt successfully");
 
-    llama_sampler* smpl = llama_sampler_init_greedy();
+    // Build a sampler chain: top_k -> top_p -> temp -> penalties -> dist
+    // to prevent repetitive output from the small 0.5B model
+    auto sparams = llama_sampler_chain_default_params();
+    llama_sampler* smpl = llama_sampler_chain_init(sparams);
+    llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
+    llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.9f, 1));
+    llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.8f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(
+        64,    // penalize last 64 tokens
+        1.1f,  // repeat penalty (>1.0 = penalize repeats)
+        0.8f,  // frequency penalty
+        1.0f   // present penalty
+    ));
+    llama_sampler_chain_add(smpl, llama_sampler_init_dist(12345));
 
     int cur = n_prompt;
     while (cur < n_prompt + maxTokens) {
         int token = llama_sampler_sample(smpl, ctx, -1);
 
         if (token == llama_vocab_eos(vocab)) {
+            LOGD("Sampled EOS token at step %d", cur);
             break;
         }
 
@@ -178,6 +199,10 @@ Java_com_example_modeltest_LlamaNative_generate(
 
         if (n > 0) {
             result.append(buf, n);
+        }
+
+        if (cur == n_prompt) {
+             LOGD("First generated token id: %d, piece length: %d", token, n);
         }
 
         batch.n_tokens = 1;

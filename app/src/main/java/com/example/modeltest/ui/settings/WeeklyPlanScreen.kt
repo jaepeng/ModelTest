@@ -280,7 +280,7 @@ fun WeeklyPlanScreen(
     }
 }
 
-private fun DateUtils.Companion.dateToString(date: java.util.Date): String {
+private fun DateUtils.dateToString(date: java.util.Date): String {
     val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     return sdf.format(date)
 }

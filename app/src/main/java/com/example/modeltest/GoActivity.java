@@ -24,7 +24,7 @@ public class GoActivity extends AppCompatActivity {
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_go);
 
-        copyAssetToFilesIfNotExists("models/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf", "qwen2.5-coder-0.5b-instruct-q4_k_m.gguf");
+        copyAssetToFilesIfNotExists("models/MiniCPM-V-4_6-Q4_0.gguf", "MiniCPM-V-4_6-Q4_0.gguf");
 
         try {
             llama = new LlamaNative();
@@ -44,7 +44,7 @@ public class GoActivity extends AppCompatActivity {
                 Log.e("QWEN", "getExternalFilesDir is null");
                 return;
             }
-            File modelFile = new File(externalFilesDir, "qwen2.5-coder-0.5b-instruct-q4_k_m.gguf");
+            File modelFile = new File(externalFilesDir, "MiniCPM-V-4_6-Q4_0.gguf");
             if (!modelFile.exists()) {
                 Log.e("QWEN", "Model file does not exist: " + modelFile.getAbsolutePath());
                 return;

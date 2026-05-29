@@ -1,24 +1,25 @@
 [versions]
-agp = "8.7.3"
+agp = "8.10.1"
 coreKtx = "1.13.1"
 junit = "4.13.2"
 junitVersion = "1.2.1"
 espressoCore = "3.6.1"
 lifecycleRuntimeKtx = "2.8.7"
 activityCompose = "1.9.3"
-kotlin = "2.0.21"
-composeBom = "2024.10.01"
+kotlin = "2.3.20"
+composeBom = "2026.05.01"
 tracing = "1.2.0"
 startup = "1.1.1"
 appcompat = "1.7.1"
 material = "1.14.0"
 activityKtx = "1.8.0"
 constraintlayout = "2.2.1"
-room = "2.6.1"
+room = "2.8.4"
 navigation = "2.8.5"
-vico = "2.0.0-beta.2"
+vico = "3.1.0"
 lifecycleViewmodelCompose = "2.8.7"
-ksp = "2.0.21-1.0.28"
+ksp = "2.3.9"
+coreKtxVersion = "1.13.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -48,6 +49,7 @@ androidx-room-compiler = { group = "androidx.room", name = "room-compiler", vers
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation" }
 androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycleViewmodelCompose" }
 vico-compose-m3 = { group = "com.patrykandpatrick.vico", name = "compose-m3", version.ref = "vico" }
+core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtxVersion" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

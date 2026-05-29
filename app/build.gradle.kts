@@ -2,11 +2,12 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.kotlin.android)
 }
 
 android {
     namespace = "com.example.modeltest"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.modeltest"
@@ -56,6 +57,11 @@ android {
     buildFeatures {
         compose = true
     }
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+        }
+    }
 }
 
 dependencies {
@@ -71,6 +77,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.startup)
+    implementation(libs.core.ktx)
     implementation(libs.material)
 
     // Room
@@ -87,8 +94,8 @@ dependencies {
     // Charts
     implementation(libs.vico.compose.m3)
 
-    // Confetti animation
-    implementation("com.github.jinatonic.confetti:confetti:2.1.0")
+    // Confetti
+    implementation("com.github.jinatonic:confetti:1.1.1")
 
     // Material Icons Extended
     implementation("androidx.compose.material:material-icons-extended:1.7.5")

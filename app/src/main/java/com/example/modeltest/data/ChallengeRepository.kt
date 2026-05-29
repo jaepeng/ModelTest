@@ -33,4 +33,13 @@ class ChallengeRepository(private val dao: ChallengeDao) {
 
     fun getCategoryStats(startDate: String, endDate: String) =
         dao.getCategoryBreakdown(startDate, endDate)
+
+    /**
+     * Prepare for new generation: archive completed challenges, delete incomplete ones.
+     */
+    suspend fun archiveAndCleanupToday() {
+        val today = DateUtils.todayString()
+        dao.archiveCompletedChallenges(today)
+        dao.deleteIncompleteChallenges(today)
+    }
 }

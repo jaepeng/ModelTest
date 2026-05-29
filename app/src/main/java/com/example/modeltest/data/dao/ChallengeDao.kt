@@ -22,7 +22,7 @@ interface ChallengeDao {
         FROM challenges c
         INNER JOIN categories cat ON c.categoryId = cat.id
         LEFT JOIN challenge_completions comp ON c.id = comp.challengeId
-        WHERE c.date = :date
+        WHERE c.date = :date AND c.archived = 0
         ORDER BY cat.sortOrder
     """)
     fun getChallengesForDate(date: String): Flow<List<ChallengeWithCategoryAndCompletion>>
@@ -67,4 +67,12 @@ interface ChallengeDao {
     // Check if challenge is completed
     @Query("SELECT COUNT(*) FROM challenge_completions WHERE challengeId = :challengeId")
     suspend fun isChallengeCompleted(challengeId: Long): Int
+
+    // Archive completed challenges for a given date (mark as archived)
+    @Query("UPDATE challenges SET archived = 1 WHERE date = :date AND id IN (SELECT challengeId FROM challenge_completions)")
+    suspend fun archiveCompletedChallenges(date: String)
+
+    // Delete non-archived (incomplete) challenges for a given date
+    @Query("DELETE FROM challenges WHERE date = :date AND archived = 0")
+    suspend fun deleteIncompleteChallenges(date: String)
 }

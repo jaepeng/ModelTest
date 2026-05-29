@@ -23,6 +23,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -35,12 +36,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
-import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottomAxis
-import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStartAxis
+import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
+import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberColumnCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
-import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
-import com.patrykandpatrick.vico.core.cartesian.data.columnSeries
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProducer
+import com.patrykandpatrick.vico.compose.cartesian.data.columnSeries
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -114,17 +115,19 @@ fun HistoryScreen(
                         val counts = dailyStats.map { it.count.toFloat() }
                         val labels = dailyStats.map { it.date.takeLast(5) }
 
-                        modelProducer.runTransaction {
-                            columnSeries { series(counts) }
+                        LaunchedEffect(counts) {
+                            modelProducer.runTransaction {
+                                columnSeries { series(counts) }
+                            }
                         }
 
                         CartesianChartHost(
                             chart = rememberCartesianChart(
                                 rememberColumnCartesianLayer(),
-                                startAxis = rememberStartAxis(),
-                                bottomAxis = rememberBottomAxis(
-                                    valueFormatter = { x, _, _ ->
-                                        labels.getOrElse(x.toInt()) { "" }
+                                startAxis = VerticalAxis.rememberStart(),
+                                bottomAxis = HorizontalAxis.rememberBottom(
+                                    valueFormatter = { _, value, _ ->
+                                        labels.getOrElse(value.toInt()) { "" }
                                     }
                                 )
                             ),
