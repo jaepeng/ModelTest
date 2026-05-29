@@ -47,20 +47,26 @@ abstract class AppDatabase : RoomDatabase() {
     }
 
     private class SeedCallback : Callback() {
-        override fun onCreate(db: SupportSQLiteDatabase) {
-            super.onCreate(db)
-            // Seed 7 categories
-            val categories = listOf(
-                "('health', '健康', '💧', 1, 1)",
-                "('mindfulness', '正念', '🧘', 2, 1)",
-                "('learning', '学习', '📚', 3, 1)",
-                "('creativity', '创造', '🎨', 4, 1)",
-                "('social', '社交', '💬', 5, 1)",
-                "('fitness', '运动', '🏃', 6, 1)",
-                "('nature', '自然', '🌿', 7, 1)"
-            )
-            categories.forEach {
-                db.execSQL("INSERT INTO categories (name, displayName, emoji, sortOrder, isActive) VALUES $it")
+        override fun onOpen(db: SupportSQLiteDatabase) {
+            super.onOpen(db)
+            // Ensure 7 categories always exist (safe for existing DBs)
+            val cursor = db.query("SELECT COUNT(*) FROM categories")
+            cursor.moveToFirst()
+            val count = cursor.getInt(0)
+            cursor.close()
+            if (count == 0) {
+                val categories = listOf(
+                    "('health', '健康', '💧', 1, 1)",
+                    "('mindfulness', '正念', '🧘', 2, 1)",
+                    "('learning', '学习', '📚', 3, 1)",
+                    "('creativity', '创造', '🎨', 4, 1)",
+                    "('social', '社交', '💬', 5, 1)",
+                    "('fitness', '运动', '🏃', 6, 1)",
+                    "('nature', '自然', '🌿', 7, 1)"
+                )
+                categories.forEach {
+                    db.execSQL("INSERT INTO categories (name, displayName, emoji, sortOrder, isActive) VALUES $it")
+                }
             }
         }
     }

@@ -19,7 +19,11 @@ object ChallengeParser {
      * {"health":["喝一杯水","起来站5分钟","深呼吸3次"],"mindfulness":[...]}
      */
     fun parse(rawOutput: String): Map<String, List<String>> {
-        val jsonStr = extractJson(rawOutput)
+        // Strip <think>...</think> blocks (model reasoning) before parsing
+        val cleaned = rawOutput.replace(Regex("(?s)<think>.*?</think>"), "").trim()
+        Log.d(TAG, "Cleaned output (after removing <think>): $cleaned")
+
+        val jsonStr = extractJson(cleaned)
         if (jsonStr.isEmpty()) {
             Log.e(TAG, "No JSON found in output: $rawOutput")
             return emptyMap()

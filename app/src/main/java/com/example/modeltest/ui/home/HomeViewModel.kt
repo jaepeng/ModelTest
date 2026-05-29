@@ -160,20 +160,23 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+    fun buildTextPrompt(userQuery: String): String {
+        return "<|im_start|>user\n${userQuery}<|im_end|>\n<|im_start|>assistant\n"
+    }
 
     private fun buildPrompt(categories: List<String>, countPerCategory: Int): String {
         val categoryEntries = categories.joinToString(",") { "\"$it\"" }
-        return """你是每日挑战生成助手。
-请为每个分类各生成${countPerCategory}个微小的、积极向上的日常挑战。
-规则：
-- 每个挑战5分钟内可完成
-- 内容具体可执行，积极向上
-- 每条15字以内
-
-分类（使用以下英文key作为JSON的key）：$categoryEntries
-
-严格输出JSON格式，key必须是英文：
-{"health":["喝一杯温水","起来站5分钟"],"learning":["看5分钟书","学一个新单词"]}"""
+        return buildTextPrompt("你是每日挑战生成助手。\n" +
+                "请为每个分类各生成${countPerCategory}个微小的、积极向上的日常挑战。\n" +
+                "规则：\n" +
+                "- 每个挑战5分钟内可完成\n" +
+                "- 内容具体可执行，积极向上\n" +
+                "- 每条15字以内，必须是中文\n" +
+                "\n" +
+                "分类（使用以下英文key作为JSON的key）：$categoryEntries\n" +
+                "\n" +
+                "严格输出JSON格式，key必须是英文：格式为：{\"类别1\":[\"任务1\",\"任务2\"],\"类别2\":[\"任务1\",\"任务2\"]},示例如下：\n" +
+                "{\"health\":[\"喝一杯温水\",\"起来站5分钟\"],\"learning\":[\"看5分钟书\",\"学一个新单词\"]}")
     }
 
     private fun getCategoryDisplayName(name: String): String = when (name) {
