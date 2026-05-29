@@ -26,8 +26,8 @@ class LlmService(private val context: Context) {
         private const val TAG = "LlmService"
         private const val MODEL_FILENAME = "MiniCPM-V-4_6-Q4_0.gguf"
         private const val ASSET_PATH = "models/$MODEL_FILENAME"
-        private const val N_CTX = 2048
-        private const val MAX_TOKENS = 2048
+        private const val N_CTX = 4096
+        private const val MAX_TOKENS = 4096
     }
 
     /**
