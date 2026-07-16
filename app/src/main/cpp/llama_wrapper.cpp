@@ -1,9 +1,21 @@
 #include <jni.h>
 #include <android/log.h>
+#include <unistd.h>
 #include <string>
 #include "llama.h"
 #include "ggml-backend.h"
 #include "ggml-cpu.h"
+
+// Pick a reasonable thread count for the device: half the cores, clamped to [2, 8].
+// Big cores only on most phones => more threads than physical cores thrashes and heats up.
+static int pickThreadCount() {
+    long ncpu = sysconf(_SC_NPROCESSORS_ONLN);
+    if (ncpu <= 0) return 4;
+    int t = (int)(ncpu / 2);
+    if (t < 2) t = 2;
+    if (t > 8) t = 8;
+    return t;
+}
 
 #define LOG_TAG "LLAMA_JNI"
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
@@ -90,7 +102,10 @@ Java_com_example_modeltest_LlamaNative_loadModel(
 
     llama_context_params cparams = llama_context_default_params();
     cparams.n_ctx = nCtx;
-    cparams.n_threads = 4;
+    int n_threads = pickThreadCount();
+    cparams.n_threads = n_threads;
+    cparams.n_threads_batch = n_threads;
+    LOGD("using n_threads=%d (ncpu=%ld, n_ctx=%d)", n_threads, sysconf(_SC_NPROCESSORS_ONLN), nCtx);
 
     llama_context* ctx = llama_init_from_model(model, cparams);
     if (!ctx) {
