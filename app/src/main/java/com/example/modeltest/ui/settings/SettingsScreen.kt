@@ -60,6 +60,8 @@ fun SettingsScreen(
     val dailyCount by repo.getDailyChallengeCount().collectAsState(initial = 5)
     val refreshMode by repo.getRefreshMode().collectAsState(initial = "auto")
     val defaultCategories by repo.getDefaultCategories().collectAsState(initial = listOf("health", "mindfulness", "learning", "fitness"))
+    val activePeriod by repo.getActivePeriod().collectAsState(initial = "allday")
+    val intensity by repo.getIntensity().collectAsState(initial = "moderate")
 
     val categories = listOf(
         Triple("health", "健康", "💧"),
@@ -168,6 +170,53 @@ fun SettingsScreen(
                             scope.launch { repo.setRefreshMode(if (it) "auto" else "manual") }
                         }
                     )
+                }
+            }
+        }
+
+        // Active Period
+        item {
+            SettingsCard(title = "活跃时段", icon = Icons.Default.Star) {
+                SingleChoiceSegmentedButtonRow(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    listOf(
+                        "morning" to "早晨",
+                        "afternoon" to "下午",
+                        "evening" to "晚上",
+                        "allday" to "全天"
+                    ).forEachIndexed { index, (key, label) ->
+                        SegmentedButton(
+                            selected = activePeriod == key,
+                            onClick = { scope.launch { repo.setActivePeriod(key) } },
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = 4)
+                        ) {
+                            Text(label)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Intensity
+        item {
+            SettingsCard(title = "强度", icon = Icons.Default.Star) {
+                SingleChoiceSegmentedButtonRow(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    listOf(
+                        "light" to "轻松",
+                        "moderate" to "适中",
+                        "hard" to "挑战"
+                    ).forEachIndexed { index, (key, label) ->
+                        SegmentedButton(
+                            selected = intensity == key,
+                            onClick = { scope.launch { repo.setIntensity(key) } },
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = 3)
+                        ) {
+                            Text(label)
+                        }
+                    }
                 }
             }
         }

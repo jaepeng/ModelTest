@@ -92,6 +92,8 @@ fun OnboardingScreen(
 
     var selectedCount by remember { mutableIntStateOf(5) }
     var selectedCategories by remember { mutableStateOf(setOf("health", "mindfulness", "learning", "fitness")) }
+    var selectedPeriod by remember { mutableStateOf("allday") }
+    var selectedIntensity by remember { mutableStateOf("moderate") }
 
     val categories = listOf(
         Triple("health", "健康", "\uD83D\uDCA7"),
@@ -120,6 +122,8 @@ fun OnboardingScreen(
                     scope.launch {
                         repo.setDefaultCategories(selectedCategories.toList())
                         repo.setDailyChallengeCount(selectedCount)
+                        repo.setActivePeriod(selectedPeriod)
+                        repo.setIntensity(selectedIntensity)
                         repo.setOnboardingCompleted()
                         onComplete()
                     }
@@ -251,6 +255,63 @@ fun OnboardingScreen(
                                 }
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        // Active period
+                        Text(
+                            text = "活跃时段",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp)
+                        )
+                        SingleChoiceSegmentedButtonRow(
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            listOf(
+                                "morning" to "早晨",
+                                "afternoon" to "下午",
+                                "evening" to "晚上",
+                                "allday" to "全天"
+                            ).forEachIndexed { index, (key, label) ->
+                                SegmentedButton(
+                                    selected = selectedPeriod == key,
+                                    onClick = { selectedPeriod = key },
+                                    shape = SegmentedButtonDefaults.itemShape(index = index, count = 4)
+                                ) {
+                                    Text(label)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        // Intensity
+                        Text(
+                            text = "强度",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp)
+                        )
+                        SingleChoiceSegmentedButtonRow(
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            listOf(
+                                "light" to "轻松",
+                                "moderate" to "适中",
+                                "hard" to "挑战"
+                            ).forEachIndexed { index, (key, label) ->
+                                SegmentedButton(
+                                    selected = selectedIntensity == key,
+                                    onClick = { selectedIntensity = key },
+                                    shape = SegmentedButtonDefaults.itemShape(index = index, count = 3)
+                                ) {
+                                    Text(label)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -297,6 +358,8 @@ fun OnboardingScreen(
                         scope.launch {
                             repo.setDefaultCategories(selectedCategories.toList())
                             repo.setDailyChallengeCount(selectedCount)
+                            repo.setActivePeriod(selectedPeriod)
+                            repo.setIntensity(selectedIntensity)
                             repo.setOnboardingCompleted()
                             onComplete()
                         }
