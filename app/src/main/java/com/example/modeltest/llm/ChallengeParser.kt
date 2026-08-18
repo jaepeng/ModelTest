@@ -48,8 +48,8 @@ object ChallengeParser {
                 // often emits {"cat":"text"} instead of {"cat":["text"]} when count=1).
                 val challenges: List<String> = when (val v = json.get(key)) {
                     is org.json.JSONArray -> (0 until v.length()).map { v.getString(it) }
-                        .filter { it.isNotBlank() }
-                    is String -> if (v.isNotBlank()) listOf(v) else emptyList()
+                        .filter { it.isNotBlank() && isChineseText(it) }
+                    is String -> if (v.isNotBlank() && isChineseText(v)) listOf(v) else emptyList()
                     else -> emptyList()
                 }
                 if (challenges.isNotEmpty()) {
@@ -61,6 +61,20 @@ object ChallengeParser {
             Log.w(TAG, "Strict parse error: ${e.message}")
             null
         }
+    }
+
+    /**
+     * Check if text is valid Chinese challenge text.
+     * Allows: Chinese characters, Arabic numerals, common punctuation, spaces.
+     * Rejects: Latin letters (a-z, A-Z), which indicate the model leaked English/pinyin.
+     */
+    private fun isChineseText(text: String): Boolean {
+        // Reject if contains Latin letters (model leaked English/pinyin)
+        if (Regex("[a-zA-Z]").containsMatchIn(text)) {
+            Log.w(TAG, "Rejected non-Chinese text: $text")
+            return false
+        }
+        return true
     }
 
     /**
@@ -78,7 +92,7 @@ object ChallengeParser {
             // Extract all quoted strings from the value portion.
             val items = Regex("\"([^\"]+)\"").findAll(rest)
                 .map { it.groupValues[1].trim() }
-                .filter { it.isNotBlank() }
+                .filter { it.isNotBlank() && isChineseText(it) }
                 .toList()
             if (items.isNotEmpty() && key !in result) {
                 result[key] = items
