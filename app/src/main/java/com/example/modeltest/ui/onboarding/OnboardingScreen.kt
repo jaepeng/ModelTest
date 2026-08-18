@@ -27,8 +27,10 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -52,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.modeltest.data.AppDatabase
 import com.example.modeltest.data.UserSettingRepository
+import com.example.modeltest.llm.SelfDescriptionService
 import kotlinx.coroutines.launch
 
 data class OnboardingPage(
@@ -94,6 +97,10 @@ fun OnboardingScreen(
     var selectedCategories by remember { mutableStateOf(setOf("health", "mindfulness", "learning", "fitness")) }
     var selectedPeriod by remember { mutableStateOf("allday") }
     var selectedIntensity by remember { mutableStateOf("moderate") }
+    var selfDescription by remember { mutableStateOf("") }
+    var isSummarizing by remember { mutableStateOf(false) }
+
+    val selfDescService = remember { SelfDescriptionService(context) }
 
     val categories = listOf(
         Triple("health", "健康", "\uD83D\uDCA7"),
@@ -124,6 +131,11 @@ fun OnboardingScreen(
                         repo.setDailyChallengeCount(selectedCount)
                         repo.setActivePeriod(selectedPeriod)
                         repo.setIntensity(selectedIntensity)
+                        if (selfDescription.isNotBlank()) {
+                            isSummarizing = true
+                            selfDescService.summarizeAndSave(repo, selfDescription)
+                            isSummarizing = false
+                        }
                         repo.setOnboardingCompleted()
                         onComplete()
                     }
@@ -312,6 +324,32 @@ fun OnboardingScreen(
                                 }
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        // Self description
+                        Text(
+                            text = "自我介绍（可选）",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp)
+                        )
+                        Text(
+                            text = "例：我是程序员，久坐多，想减压和改善体态，喜欢户外但没时间，只有晚上有空。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        OutlinedTextField(
+                            value = selfDescription,
+                            onValueChange = { if (it.length <= 200) selfDescription = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("简单介绍一下自己…") },
+                            supportingText = { Text("${selfDescription.length}/200") },
+                            minLines = 3,
+                            maxLines = 5
+                        )
                     }
                 }
             }
@@ -360,18 +398,33 @@ fun OnboardingScreen(
                             repo.setDailyChallengeCount(selectedCount)
                             repo.setActivePeriod(selectedPeriod)
                             repo.setIntensity(selectedIntensity)
+                            if (selfDescription.isNotBlank()) {
+                                isSummarizing = true
+                                selfDescService.summarizeAndSave(repo, selfDescription)
+                                isSummarizing = false
+                            }
                             repo.setOnboardingCompleted()
                             onComplete()
                         }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = pagerState.currentPage < onboardingPages.size || selectedCategories.isNotEmpty()
+                enabled = !isSummarizing && (pagerState.currentPage < onboardingPages.size || selectedCategories.isNotEmpty())
             ) {
-                Text(
-                    text = if (pagerState.currentPage < onboardingPages.size) "下一步" else "开始使用",
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
+                if (isSummarizing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("AI 正在分析你的偏好…")
+                } else {
+                    Text(
+                        text = if (pagerState.currentPage < onboardingPages.size) "下一步" else "开始使用",
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                }
             }
         }
     }

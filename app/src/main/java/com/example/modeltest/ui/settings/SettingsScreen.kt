@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
@@ -62,6 +63,12 @@ fun SettingsScreen(
     val defaultCategories by repo.getDefaultCategories().collectAsState(initial = listOf("health", "mindfulness", "learning", "fitness"))
     val activePeriod by repo.getActivePeriod().collectAsState(initial = "allday")
     val intensity by repo.getIntensity().collectAsState(initial = "moderate")
+    val selfSummary by repo.getSelfDescriptionSummary().collectAsState(initial = "")
+    val selfRaw by repo.getSelfDescriptionRaw().collectAsState(initial = "")
+
+    var showSelfDescDialog by remember { mutableStateOf(false) }
+    var isSummarizing by remember { mutableStateOf(false) }
+    val selfDescService = remember { com.example.modeltest.llm.SelfDescriptionService(context) }
 
     val categories = listOf(
         Triple("health", "健康", "💧"),
@@ -221,6 +228,34 @@ fun SettingsScreen(
             }
         }
 
+        // Self Description
+        item {
+            SettingsCard(title = "自我介绍", icon = Icons.Default.Star) {
+                Column {
+                    if (selfSummary.isNotBlank()) {
+                        Text(
+                            text = selfSummary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Text(
+                            text = "未设置",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (isSummarizing) "AI 正在分析你的偏好…" else "点击编辑",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isSummarizing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.clickable(enabled = !isSummarizing) { showSelfDescDialog = true }
+                    )
+                }
+            }
+        }
+
         // Weekly Plan
         item {
             SettingsCard(
@@ -265,6 +300,85 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(80.dp))
         }
     }
+
+    if (showSelfDescDialog) {
+        SelfDescriptionDialog(
+            initialText = selfRaw,
+            isSummarizing = isSummarizing,
+            onDismiss = { showSelfDescDialog = false },
+            onSave = { text ->
+                scope.launch {
+                    isSummarizing = true
+                    selfDescService.summarizeAndSave(repo, text)
+                    isSummarizing = false
+                    showSelfDescDialog = false
+                }
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SelfDescriptionDialog(
+    initialText: String,
+    isSummarizing: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { if (!isSummarizing) onDismiss() },
+        title = { Text("自我介绍") },
+        text = {
+            Column {
+                Text(
+                    text = "例：我是程序员，久坐多，想减压和改善体态，喜欢户外但没时间，只有晚上有空。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                var text by remember { mutableStateOf(initialText) }
+                androidx.compose.material3.OutlinedTextField(
+                    value = text,
+                    onValueChange = { if (it.length <= 200) text = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("简单介绍一下自己…") },
+                    supportingText = { Text("${text.length}/200") },
+                    minLines = 3,
+                    maxLines = 5,
+                    enabled = !isSummarizing
+                )
+                if (isSummarizing) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("AI 正在分析你的偏好…", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    androidx.compose.material3.TextButton(onClick = onDismiss, enabled = !isSummarizing) {
+                        Text("取消")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    androidx.compose.material3.TextButton(
+                        onClick = { onSave(text) },
+                        enabled = !isSummarizing && text.isNotBlank()
+                    ) {
+                        Text("保存")
+                    }
+                }
+            }
+        },
+        confirmButton = {}
+    )
 }
 
 @Composable

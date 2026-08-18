@@ -13,6 +13,7 @@ import com.example.modeltest.data.entity.Challenge
 import com.example.modeltest.data.entity.ChallengeWithCategoryAndCompletion
 import com.example.modeltest.llm.ChallengeParser
 import com.example.modeltest.llm.LlmService
+import com.example.modeltest.llm.SelfDescriptionService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -44,6 +45,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val userSettingRepo = UserSettingRepository(db.userSettingDao())
     private val weeklyPlanRepo = WeeklyPlanRepository(db.weeklyPlanDao())
     private val llmService = LlmService(application)
+    private val selfDescService = SelfDescriptionService(application)
 
     private val _isLoading = MutableStateFlow(false)
     private val _isGenerating = MutableStateFlow(false)
@@ -114,7 +116,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 val dailyCount = userSettingRepo.getDailyChallengeCount().first()
                 val activePeriod = userSettingRepo.getActivePeriod().first()
                 val intensity = userSettingRepo.getIntensity().first()
-                Log.d(TAG, "Step 2: categories=$defaultCategories, dailyCount=$dailyCount, period=$activePeriod, intensity=$intensity")
+                val selfSummary = userSettingRepo.getSelfDescriptionSummary().first()
+                Log.d(TAG, "Step 2: categories=$defaultCategories, dailyCount=$dailyCount, period=$activePeriod, intensity=$intensity, summary=${selfSummary.take(40)}")
 
                 // 方案B: dailyCount < 分类数时,用日期种子轮换选 dailyCount 个分类,每类 1 个。
                 // 避免部分分类获得 0 个挑战。同一天种子固定,跨天轮换覆盖所有分类。
@@ -152,7 +155,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                         if (remaining <= 0) break
                         Log.d(TAG, "Step 4: Generating '$cat' x$remaining (attempt $attempt/$MAX_GEN_RETRY)...")
                         val fullOutput = StringBuilder()
-                        llmService.generateStreaming(buildSingleCategoryPrompt(cat, remaining, activePeriod, intensity)).collect { token ->
+                        llmService.generateStreaming(buildSingleCategoryPrompt(cat, remaining, activePeriod, intensity, selfSummary)).collect { token ->
                             fullOutput.append(token)
                             _thinkingText.value = "[$cat] $fullOutput"
                             Log.d(TAG, "Token: $token")
@@ -225,7 +228,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         category: String,
         count: Int,
         activePeriod: String,
-        intensity: String
+        intensity: String,
+        selfSummary: String = ""
     ): String {
         val periodDesc = when (activePeriod) {
             "morning" -> "早晨时段（适合唤醒、拉伸、计划类动作）"
@@ -238,11 +242,15 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             "hard" -> "挑战强度（有一定强度，突破舒适区）"
             else -> "适中强度（常规动作）"
         }
+        val profileBlock = if (selfSummary.isNotBlank()) {
+            "- 用户画像：\n$selfSummary\n"
+        } else ""
         return buildTextPrompt("你是每日挑战生成助手。\n" +
                 "为分类 $category 生成恰好 $count 个挑战，数量不能多不能少。\n" +
                 "用户偏好（必须遵守）：\n" +
                 "- $periodDesc\n" +
                 "- $intensityDesc\n" +
+                profileBlock +
                 "挑战设计核心要求：\n" +
                 "- 必须是单一、具体、可在5分钟内完成的动作，有明确的开始和结束\n" +
                 "- 必须可直接执行，不需要准备、不需要坚持、不是习惯\n" +

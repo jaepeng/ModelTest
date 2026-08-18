@@ -28,6 +28,12 @@ class UserSettingRepository(private val dao: UserSettingDao) {
     fun getIntensity(): Flow<String> =
         dao.getSetting(SettingKeys.INTENSITY).map { it ?: "moderate" }
 
+    fun getSelfDescriptionRaw(): Flow<String> =
+        dao.getSetting(SettingKeys.SELF_DESCRIPTION_RAW).map { it ?: "" }
+
+    fun getSelfDescriptionSummary(): Flow<String> =
+        dao.getSetting(SettingKeys.SELF_DESCRIPTION_SUMMARY).map { it ?: "" }
+
     suspend fun setDailyChallengeCount(count: Int) {
         dao.setSetting(UserSetting(SettingKeys.DAILY_CHALLENGE_COUNT, count.toString()))
     }
@@ -50,5 +56,13 @@ class UserSettingRepository(private val dao: UserSettingDao) {
 
     suspend fun setIntensity(level: String) {
         dao.setSetting(UserSetting(SettingKeys.INTENSITY, level))
+    }
+
+    suspend fun setSelfDescriptionRaw(text: String) {
+        dao.setSetting(UserSetting(SettingKeys.SELF_DESCRIPTION_RAW, text))
+    }
+
+    suspend fun setSelfDescriptionSummary(text: String) {
+        dao.setSetting(UserSetting(SettingKeys.SELF_DESCRIPTION_SUMMARY, text))
     }
 }
