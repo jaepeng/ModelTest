@@ -22,6 +22,12 @@ class UserSettingRepository(private val dao: UserSettingDao) {
             it?.split(",")?.filter { s -> s.isNotBlank() } ?: listOf("health", "mindfulness", "learning", "fitness")
         }
 
+    fun getActivePeriod(): Flow<String> =
+        dao.getSetting(SettingKeys.ACTIVE_PERIOD).map { it ?: "allday" }
+
+    fun getIntensity(): Flow<String> =
+        dao.getSetting(SettingKeys.INTENSITY).map { it ?: "moderate" }
+
     suspend fun setDailyChallengeCount(count: Int) {
         dao.setSetting(UserSetting(SettingKeys.DAILY_CHALLENGE_COUNT, count.toString()))
     }
@@ -36,5 +42,13 @@ class UserSettingRepository(private val dao: UserSettingDao) {
 
     suspend fun setDefaultCategories(categories: List<String>) {
         dao.setSetting(UserSetting(SettingKeys.DEFAULT_CATEGORIES, categories.joinToString(",")))
+    }
+
+    suspend fun setActivePeriod(period: String) {
+        dao.setSetting(UserSetting(SettingKeys.ACTIVE_PERIOD, period))
+    }
+
+    suspend fun setIntensity(level: String) {
+        dao.setSetting(UserSetting(SettingKeys.INTENSITY, level))
     }
 }

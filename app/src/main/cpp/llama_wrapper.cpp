@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <android/log.h>
 #include <unistd.h>
+#include <ctime>
 #include <string>
 #include "llama.h"
 #include "ggml-backend.h"
@@ -225,14 +226,15 @@ Java_com_example_modeltest_LlamaNative_generate(
     llama_sampler* smpl = llama_sampler_chain_init(sparams);
     llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
     llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.9f, 1));
-    llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.8f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_temp(1.0f));
     llama_sampler_chain_add(smpl, llama_sampler_init_penalties(
         64,    // penalize last 64 tokens
         1.1f,  // repeat penalty (>1.0 = penalize repeats)
         0.8f,  // frequency penalty
         1.0f   // present penalty
     ));
-    llama_sampler_chain_add(smpl, llama_sampler_init_dist(12345));
+    // Random seed from time so each generation differs (was hardcoded 12345).
+    llama_sampler_chain_add(smpl, llama_sampler_init_dist((unsigned int)time(nullptr)));
 
     int cur = n_prompt;
     while (cur < n_prompt + maxTokens) {
@@ -371,10 +373,11 @@ Java_com_example_modeltest_LlamaNative_generateStreaming(
     llama_sampler* smpl = llama_sampler_chain_init(sparams);
     llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
     llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.9f, 1));
-    llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.8f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_temp(1.0f));
     llama_sampler_chain_add(smpl, llama_sampler_init_penalties(64, 1.1f, 0.8f, 1.0f));
     // NOTE: grammar sampler removed — vendored llama.cpp .so crashes (see comment in generate()).
-    llama_sampler_chain_add(smpl, llama_sampler_init_dist(12345));
+    // Random seed from time so each generation differs (was hardcoded 12345).
+    llama_sampler_chain_add(smpl, llama_sampler_init_dist((unsigned int)time(nullptr)));
 
     // Get callback method IDs (thread-safe lookup)
     JNIEnv* cbEnv = getJNIEnv();
