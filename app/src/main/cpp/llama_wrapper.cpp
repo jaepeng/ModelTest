@@ -21,6 +21,22 @@ static int pickThreadCount() {
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
+// GBNF grammar: {"engkey":["中文任务","中文任务"], ...}
+// Keys are ASCII identifiers (matching seeded category names: health, mindfulness, ...).
+// Values are string arrays of task text. taskchar allows any UTF-8/Chinese char except the
+// structural delimiters that would break JSON parsing (quote, backslash, close-bracket).
+// Note: use * (not +) for pair repetition. The + form triggers an exception in
+// llama_grammar_accept_token on some token paths (llama.cpp grammar sampler bug).
+// Category count is enforced at the prompt + retry layer instead.
+static const char* CHALLENGE_GBNF =
+    "root    ::= \"{\" ws (pair (\",\" ws pair)*)? ws \"}\"\n"
+    "pair    ::= key ws \":\" ws arr\n"
+    "key     ::= \"\\\"\" [a-z]+ \"\\\"\"\n"
+    "arr     ::= \"[\" ws (item (\",\" ws item)*)? ws \"]\"\n"
+    "item    ::= \"\\\"\" taskchar+ \"\\\"\"\n"
+    "taskchar ::= [^\"\\]\\\\] | \"\\\\\" .\n"
+    "ws      ::= [ \\t\\n]*\n";
+
 static JavaVM* g_jvm = nullptr;
 
 struct MyContext {
@@ -200,7 +216,11 @@ Java_com_example_modeltest_LlamaNative_generate(
     LOGD("Decoded prompt successfully");
 
     // Build a sampler chain: top_k -> top_p -> temp -> penalties -> dist
-    // to prevent repetitive output from the small 0.5B model
+    // to prevent repetitive output from the small 0.5B model.
+    // NOTE: grammar sampler removed — the vendored llama.cpp .so throws
+    // std::runtime_error ("Unexpected empty grammar stack after accepting piece")
+    // on certain tokens (special tokens / multibyte boundaries), crashing the process.
+    // JSON structure is enforced by prompt + ChallengeParser.extractJson instead.
     auto sparams = llama_sampler_chain_default_params();
     llama_sampler* smpl = llama_sampler_chain_init(sparams);
     llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
@@ -353,6 +373,7 @@ Java_com_example_modeltest_LlamaNative_generateStreaming(
     llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.9f, 1));
     llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.8f));
     llama_sampler_chain_add(smpl, llama_sampler_init_penalties(64, 1.1f, 0.8f, 1.0f));
+    // NOTE: grammar sampler removed — vendored llama.cpp .so crashes (see comment in generate()).
     llama_sampler_chain_add(smpl, llama_sampler_init_dist(12345));
 
     // Get callback method IDs (thread-safe lookup)

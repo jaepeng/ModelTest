@@ -34,6 +34,7 @@ data class HomeUiState(
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val TAG = "HomeViewModel"
+        private const val MAX_GEN_RETRY = 3
     }
 
     private val db = AppDatabase.getDatabase(application)
@@ -117,23 +118,46 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 val prompt = buildPromptWithRemainder(defaultCategories, baseCount, remainder)
                 Log.d(TAG, "Step 3: Prompt length=${prompt.length}")
 
-                // Step 4: Stream generate with real-time token display
-                Log.d(TAG, "Step 4: Calling LLM streaming generate...")
-                val fullOutput = StringBuilder()
-                llmService.generateStreaming(prompt).collect { token ->
-                    fullOutput.append(token)
-                    _thinkingText.value = fullOutput.toString()
-                    Log.d(TAG, "Token: $token")
-                }
-                val llmOutput = fullOutput.toString()
-                Log.d(TAG, "Step 4: LLM output complete, length=${llmOutput.length}")
+                // Step 4: Generate with retry on missing categories.
+                // Small model often emits fewer categories than requested; retry up to MAX_GEN_RETRY.
+                var parsed: Map<String, List<String>> = emptyMap()
+                var lastOutput = ""
+                for (attempt in 1..MAX_GEN_RETRY) {
+                    Log.d(TAG, "Step 4: Calling LLM streaming generate (attempt $attempt/$MAX_GEN_RETRY)...")
+                    val fullOutput = StringBuilder()
+                    llmService.generateStreaming(prompt).collect { token ->
+                        fullOutput.append(token)
+                        _thinkingText.value = fullOutput.toString()
+                        Log.d(TAG, "Token: $token")
+                    }
+                    lastOutput = fullOutput.toString()
+                    Log.d(TAG, "Step 4: LLM output complete, length=${lastOutput.length}")
 
-                // Step 5: Parse and insert challenges
-                Log.d(TAG, "Step 5: Parsing output...")
-                val parsed = ChallengeParser.parse(llmOutput)
-                Log.d(TAG, "Step 5: parsed=$parsed")
+                    Log.d(TAG, "Step 5: Parsing output...")
+                    parsed = ChallengeParser.parse(lastOutput)
+                    Log.d(TAG, "Step 5: parsed=$parsed")
+
+                    val missing = defaultCategories.filter { it !in parsed.keys }
+                    if (missing.isEmpty()) break  // all categories present, done
+                    Log.w(TAG, "Attempt $attempt: missing categories $missing (got ${parsed.size}/${defaultCategories.size}), retrying")
+                }
 
                 if (parsed.isNotEmpty()) {
+                    val expectedPerCategory = defaultCategories.mapIndexed { index, cat ->
+                        cat to if (index < remainder) baseCount + 1 else baseCount
+                    }.toMap()
+
+                    // Trim each category to its expected count (model may over-generate).
+                    parsed = parsed.mapValues { (cat, list) ->
+                        val expected = expectedPerCategory[cat] ?: 1
+                        if (list.size > expected) {
+                            Log.w(TAG, "Category '$cat' over-generated ${list.size}, trimming to $expected")
+                            list.take(expected)
+                        } else {
+                            list
+                        }
+                    }
+
                     val allCategories = categoryDao.getCategoriesByNames(parsed.keys.toList())
                     val categoryMap = allCategories.flatMap { cat ->
                         listOf(cat.name to cat.id, cat.displayName to cat.id)
@@ -160,7 +184,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     challengeRepo.insertChallenges(challenges)
                     Log.d(TAG, "Step 7: Inserted ${challenges.size} challenges to DB")
                 } else {
-                    Log.w(TAG, "Step 5: parsed is empty - no challenges generated")
+                    Log.w(TAG, "Step 5: parsed is empty after $MAX_GEN_RETRY attempts - no challenges generated")
+                    Log.w(TAG, "Step 5: last raw output: $lastOutput")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "generateChallenges FAILED", e)
@@ -175,22 +200,37 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun buildPromptWithRemainder(categories: List<String>, baseCount: Int, remainder: Int): String {
-        val detail = categories.mapIndexed { index, cat ->
+        val list = categories.mapIndexed { index, cat ->
             val count = if (index < remainder) baseCount + 1 else baseCount
-            "$cat: $count 个"
-        }.joinToString(", ")
+            "${index + 1}. $cat: 恰好 $count 个"
+        }.joinToString("\n")
+        // Build a sample that matches the requested per-category count so the model
+        // doesn't mimic a fixed 2-item example and over-generate.
+        val sampleHealth = if (baseCount >= 2) "\"喝一杯温水\",\"起来站5分钟\"" else "\"喝一杯温水\""
+        val sampleLearn = if (baseCount >= 2) "\"看5分钟书\",\"学一个新单词\"" else "\"看5分钟书\""
         return buildTextPrompt("你是每日挑战生成助手。\n" +
-                "分类及任务数量如下：$detail\n" +
-                "规则：\n" +
-                "- 每个挑战5分钟内可完成\n" +
-                "- 必须是单次可直接执行的动作，拒绝理念、口号、概括性语句\n" +
-                "- 禁止：坚持XX、养成XX、保持XX 这类空泛描述\n" +
-                "- 内容具体可执行，积极向上\n" +
-                "- 每条15字以内，必须是中文\n" +
-                "- 不允许生成空白挑战\n" +
+                "严格数量要求（多一个少一个都不行）：\n" +
+                "$list\n" +
+                "总计恰好 ${categories.sumOf { if (categories.indexOf(it) < remainder) baseCount + 1 else baseCount }} 个挑战。\n" +
+                "输出JSON必须包含上面全部 ${categories.size} 个分类的key，不能少。\n" +
+                "挑战设计核心要求：\n" +
+                "- 必须是单一、具体、可在5分钟内完成的动作，有明确的开始和结束\n" +
+                "- 必须可直接执行，不需要准备、不需要坚持、不是习惯\n" +
+                "- 优先日常小动作：喝一杯水、深蹲5次、深呼吸3次、看一页书、写一句话、站起走动2分钟\n" +
+                "禁止以下类型（违反则不合格）：\n" +
+                "- 空泛描述：保持XX、坚持XX、养成XX、注意XX、培养XX\n" +
+                "- 理念口号：健康饮食、积极心态、规律作息、良好习惯\n" +
+                "- 概括性语句：改善XX、提升XX、加强XX\n" +
+                "- 不可量化：多喝水、多运动、少熬夜、好好吃饭\n" +
+                "- 需要长期持续的：每天XX、每周XX\n" +
+                "每条15字以内，必须是中文。\n" +
+                "直接输出JSON，禁止任何解释、思考、说明文字。\n" +
+                "- 第一个字符必须是{，最后一个字符必须是}\n" +
+                "- 禁止输出\"首先\"\"我需要\"\"理解\"等思考过程\n" +
+                "- 不要复述指令，不要说明每类要几个\n" +
                 "\n" +
-                "严格输出JSON格式，key必须是英文：格式为：{\"类别1\":[\"任务1\",\"任务2\"],\"类别2\":[\"任务1\",\"任务2\"]},示例如下：\n" +
-                "{\"health\":[\"喝一杯温水\",\"起来站5分钟\"],\"learning\":[\"看5分钟书\",\"学一个新单词\"]}")
+                "好示例：{\"health\":[$sampleHealth],\"learning\":[$sampleLearn]}\n" +
+                "坏示例（禁止）：{\"health\":[\"保持健康饮食\",\"多运动\"],\"learning\":[\"养成阅读习惯\"]}")
     }
 
     private fun getCategoryDisplayName(name: String): String = when (name) {

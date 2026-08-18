@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -100,7 +101,7 @@ class LlmService(private val context: Context) {
         awaitClose {
             Log.d(TAG, "Streaming flow closed")
         }
-    }
+    }.flowOn(Dispatchers.IO)  // run upstream (JNI blocking call) on IO, keep main thread free
 
     /**
      * Free native resources. Call when app is destroyed.
